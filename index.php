@@ -42,7 +42,14 @@ const CATEGORIES = ['oferty', 'grafiki', 'pdf', 'wskazowki', 'poradniki', 'umowy
 
 function panelPassword(): string
 {
-    return (string) (getenv('PANEL_PASSWORD') ?: '');
+    $pw = (string) (getenv('PANEL_PASSWORD') ?: '');
+    if ($pw !== '') {
+        return $pw;
+    }
+    if (PHP_SAPI === 'cli-server') {
+        return 'admin123';
+    }
+    return '';
 }
 
 function sharePasswordKey(): string
