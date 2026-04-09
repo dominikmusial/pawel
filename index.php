@@ -24,6 +24,36 @@ if (!function_exists('str_contains')) {
     }
 }
 
+$basePath = trim((string) (getenv('APP_BASE_PATH') ?: ''));
+if ($basePath === '') {
+    if (PHP_SAPI !== 'cli-server') {
+        $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+        if (is_string($scriptName) && $scriptName !== '') {
+            $dir = str_replace('\\', '/', dirname($scriptName));
+            if ($dir !== '/' && $dir !== '.') {
+                $basePath = $dir;
+            }
+        }
+    }
+}
+$basePath = trim($basePath);
+$basePath = $basePath === '' ? '' : '/' . trim($basePath, '/');
+if ($basePath === '/') {
+    $basePath = '';
+}
+define('BASE_PATH', $basePath);
+
+if (BASE_PATH !== '') {
+    if ($requestPath === BASE_PATH) {
+        $requestPath = '/';
+    } elseif (str_starts_with($requestPath, BASE_PATH . '/')) {
+        $requestPath = substr($requestPath, strlen(BASE_PATH));
+        if ($requestPath === '') {
+            $requestPath = '/';
+        }
+    }
+}
+
 if (PHP_SAPI === 'cli-server') {
     $fullPath = __DIR__ . $requestPath;
     if (is_file($fullPath)) {
@@ -171,7 +201,7 @@ function isAuthed(): bool
 function requireAuth(): void
 {
     if (!isAuthed()) {
-        header('Location: /login', true, 302);
+        header('Location: ' . urlPath('/login'), true, 302);
         exit;
     }
 }
@@ -199,6 +229,17 @@ function baseUrl(): string
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     return $scheme . '://' . $host;
+}
+
+function basePath(): string
+{
+    return BASE_PATH;
+}
+
+function urlPath(string $path): string
+{
+    $p = '/' . ltrim($path, '/');
+    return basePath() . $p;
 }
 
 function normalizeCategory(string $value): string
@@ -265,7 +306,7 @@ function requireShareUnlockedFor(array $file, string $token): void
     if (isShareUnlocked($token)) {
         return;
     }
-    header('Location: /s/' . rawurlencode($token), true, 302);
+    header('Location: ' . urlPath('/s/' . rawurlencode($token)), true, 302);
     exit;
 }
 
@@ -441,7 +482,7 @@ function renderPage(string $title, string $content, string $extraHead = ''): voi
     echo '<meta charset="utf-8" />';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1" />';
     echo '<title>' . h($title) . '</title>';
-    echo '<link rel="stylesheet" href="/assets/styles.css" />';
+    echo '<link rel="stylesheet" href="' . h(urlPath('/assets/styles.css')) . '" />';
     echo $extraHead;
     echo '</head>';
     echo '<body>';
@@ -452,7 +493,7 @@ function renderPage(string $title, string $content, string $extraHead = ''): voi
 
 function renderShell(string $headline, string $subline, string $mainHtml): string
 {
-    $logo = '<img class="logo" src="/logo.png" alt="Logo" />';
+    $logo = '<img class="logo" src="' . h(urlPath('/logo.png')) . '" alt="Logo" />';
     $footer = renderFooter();
     $sub = $subline !== '' ? '<p>' . h($subline) . '</p>' : '';
     return '<div class="page">'
@@ -481,7 +522,7 @@ function renderFooter(): string
 function renderError(string $title, string $message, int $status = 404): void
 {
     http_response_code($status);
-    renderPage($title, renderShell($title, $message, '<main class="card"><a class="button buttonPrimary" href="/admin">Wróć do panelu</a></main>'));
+    renderPage($title, renderShell($title, $message, '<main class="card"><a class="button buttonPrimary" href="' . h(urlPath('/admin')) . '">Wróć do panelu</a></main>'));
 }
 
 function parseIdFromPath(string $path, string $prefix): ?string
@@ -525,16 +566,16 @@ ensureDirs();
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
 if ($requestPath === '/') {
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
 if ($requestPath === '/login' && $method === 'GET') {
     $error = (string) ($_GET['error'] ?? '');
-    $logo = '<img class="logo" src="/logo.png" alt="Logo" />';
+    $logo = '<img class="logo" src="' . h(urlPath('/logo.png')) . '" alt="Logo" />';
     $footer = renderFooter();
     $main = '<main class="authMain"><div class="card cardNarrow">'
-        . '<form class="form" method="post" action="/login">'
+        . '<form class="form" method="post" action="' . h(urlPath('/login')) . '">'
         . '<label class="label" for="password">Hasło</label>'
         . '<input class="input" id="password" name="password" type="password" autocomplete="current-password" autofocus required />'
         . ($error === '1' ? '<div class="alert">Nieprawidłowe hasło.</div>' : '')
@@ -551,15 +592,15 @@ if ($requestPath === '/login' && $method === 'POST') {
     $password = (string) ($_POST['password'] ?? '');
     $expected = panelPassword();
     if ($expected === '') {
-        header('Location: /login?error=config', true, 302);
+        header('Location: ' . urlPath('/login') . '?error=config', true, 302);
         exit;
     }
     if (!hash_equals($expected, $password)) {
-        header('Location: /login?error=1', true, 302);
+        header('Location: ' . urlPath('/login') . '?error=1', true, 302);
         exit;
     }
     $_SESSION['auth'] = true;
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
@@ -571,7 +612,7 @@ if ($requestPath === '/logout' && $method === 'POST') {
         setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], (bool) $params['secure'], (bool) $params['httponly']);
     }
     session_destroy();
-    header('Location: /login', true, 302);
+    header('Location: ' . urlPath('/login'), true, 302);
     exit;
 }
 
@@ -635,12 +676,12 @@ if ($requestPath === '/admin' && $method === 'GET') {
             if ($id === '' || $originalName === '') {
                 continue;
             }
-            $shareUrl = baseUrl() . '/s/' . rawurlencode($token);
-            $downloadUrl = '/download/' . rawurlencode($id);
-            $editUrl = '/edit/' . rawurlencode($id);
+            $shareUrl = baseUrl() . urlPath('/s/' . rawurlencode($token));
+            $downloadUrl = urlPath('/download/' . rawurlencode($id));
+            $editUrl = urlPath('/edit/' . rawurlencode($id));
             $thumb = '';
             if ($mime !== '' && str_starts_with($mime, 'image/') && $mime !== 'image/svg+xml') {
-                $thumb = '<img class="thumb" src="/view/' . h(rawurlencode($token)) . '" alt="" loading="lazy" />';
+                $thumb = '<img class="thumb" src="' . h(urlPath('/view/' . rawurlencode($token))) . '" alt="" loading="lazy" />';
             }
             $pwRow = '';
             if ($locked) {
@@ -650,7 +691,7 @@ if ($requestPath === '/admin' && $method === 'GET') {
                 } else {
                     $pwRow = '<div class="muted small">Hasło: ustawione, ale nie do odczytania</div>'
                         . '<div class="actionsBar">'
-                        . '<form method="post" action="/genpass" class="inlineForm">'
+                        . '<form method="post" action="' . h(urlPath('/genpass')) . '" class="inlineForm">'
                         . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
                         . '<input type="hidden" name="id" value="' . h($id) . '" />'
                         . '<button class="button buttonSecondary buttonXs" type="submit">Generuj hasło</button>'
@@ -661,7 +702,7 @@ if ($requestPath === '/admin' && $method === 'GET') {
             } else {
                 $pwRow = '<div class="muted small">Hasło: brak</div>'
                     . '<div class="actionsBar">'
-                    . '<form method="post" action="/genpass" class="inlineForm">'
+                    . '<form method="post" action="' . h(urlPath('/genpass')) . '" class="inlineForm">'
                     . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
                     . '<input type="hidden" name="id" value="' . h($id) . '" />'
                     . '<button class="button buttonSecondary buttonXs" type="submit">Generuj hasło</button>'
@@ -681,7 +722,7 @@ if ($requestPath === '/admin' && $method === 'GET') {
                 . '<button class="button buttonSecondary buttonXs" type="button" data-copy="' . h($shareUrl) . '">Kopiuj link</button>'
                 . '<a class="button buttonPrimary buttonXs" href="' . h($shareUrl) . '" target="_blank" rel="noreferrer">Podgląd</a>'
                 . '<a class="button buttonGhost buttonXs" href="' . h($editUrl) . '">Edytuj</a>'
-                . '<form method="post" action="/delete" class="inlineForm">'
+                . '<form method="post" action="' . h(urlPath('/delete')) . '" class="inlineForm">'
                 . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
                 . '<input type="hidden" name="id" value="' . h($id) . '" />'
                 . '<button class="button buttonDanger buttonXs" type="submit" data-confirm="Usunąć plik?">Usuń</button>'
@@ -754,10 +795,10 @@ if ($requestPath === '/admin' && $method === 'GET') {
     $main = '<main class="grid">'
         . '<section class="card sticky">'
         . '<div class="cardHeader"><h2>Dodaj plik</h2>'
-        . '<form method="post" action="/logout"><input type="hidden" name="csrf" value="' . h($csrf) . '" /><button class="button buttonGhost" type="submit">Wyloguj</button></form>'
+        . '<form method="post" action="' . h(urlPath('/logout')) . '"><input type="hidden" name="csrf" value="' . h($csrf) . '" /><button class="button buttonGhost" type="submit">Wyloguj</button></form>'
         . '</div>'
         . $warnings
-        . '<form class="form" method="post" action="/upload" enctype="multipart/form-data">'
+        . '<form class="form" method="post" action="' . h(urlPath('/upload')) . '" enctype="multipart/form-data">'
         . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
         . '<input class="input" type="file" name="file" required />'
         . '<label class="label" for="category">Kategoria</label>'
@@ -769,11 +810,11 @@ if ($requestPath === '/admin' && $method === 'GET') {
         . '<div class="hint">Limit aplikacji: ' . h(formatBytes(MAX_UPLOAD_BYTES)) . '</div>'
         . '</div>'
         . '</form>'
-        . '<div class="muted small">Udostępnianie zawsze działa przez link firmowy z logo: <span class="mono">/s/...</span></div>'
+        . '<div class="muted small">Udostępnianie zawsze działa przez link firmowy z logo: <span class="mono">' . h(urlPath('/s/…')) . '</span></div>'
         . '</section>'
         . '<section class="card rightScroll">'
         . '<div class="cardHeader"><h2>Twoje pliki</h2><div class="muted">' . h((string) count($filtered)) . ' szt.</div></div>'
-        . '<form class="toolbar" method="get" action="/admin">'
+        . '<form class="toolbar" method="get" action="' . h(urlPath('/admin')) . '">'
         . '<input class="input" type="text" name="q" value="' . h((string) ($_GET['q'] ?? '')) . '" placeholder="Szukaj po nazwie…" />'
         . '<select class="input" name="cat">' . $filterOptions . '</select>'
         . '<button class="button buttonGhost" type="submit">Filtruj</button>'
@@ -783,7 +824,7 @@ if ($requestPath === '/admin' && $method === 'GET') {
         . '</main>';
 
     $body = renderShell('Panel plików', 'Uploaduj pliki i udostępniaj je firmowym linkiem.', $main);
-    renderPage('Panel — Pliki', $body, '<script defer src="/assets/app.js"></script>');
+    renderPage('Panel — Pliki', $body, '<script defer src="' . h(urlPath('/assets/app.js')) . '"></script>');
     exit;
 }
 
@@ -792,13 +833,13 @@ if ($requestPath === '/genpass' && $method === 'POST') {
     requireCsrf();
     $id = (string) ($_POST['id'] ?? '');
     if (!preg_match('/^[a-f0-9]{16,64}$/', $id)) {
-        header('Location: /admin', true, 302);
+        header('Location: ' . urlPath('/admin'), true, 302);
         exit;
     }
     $db = readFilesDb();
     $found = findById($db, $id);
     if ($found === null) {
-        header('Location: /admin', true, 302);
+        header('Location: ' . urlPath('/admin'), true, 302);
         exit;
     }
     $idx = (int) $found['index'];
@@ -807,7 +848,7 @@ if ($requestPath === '/genpass' && $method === 'POST') {
     $db['files'][$idx]['sharePasswordEnc'] = encryptShareSecret($newPassword);
     writeFilesDb($db);
     oneTimePasswordStore($id, $newPassword);
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
@@ -886,7 +927,7 @@ if ($requestPath === '/upload' && $method === 'POST') {
     ];
     writeFilesDb($db);
 
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
@@ -905,7 +946,7 @@ if ($editId !== null && $method === 'GET') {
     $displayName = (string) ($file['displayName'] ?? '');
     $category = normalizeCategory((string) ($file['category'] ?? 'inne'));
     $token = (string) ($file['token'] ?? $editId);
-    $shareUrl = baseUrl() . '/s/' . rawurlencode($token);
+    $shareUrl = baseUrl() . urlPath('/s/' . rawurlencode($token));
     $passwordSet = isShareProtected($file);
     $currentPassword = $passwordSet ? sharePasswordPlain($file) : '';
     $oneTimePassword = oneTimePasswordConsume($editId);
@@ -942,7 +983,7 @@ if ($editId !== null && $method === 'GET') {
         . $mailAlert
         . $pwAlert
         . ($oneTimePassword !== '' ? '<div class="alert">Nowe hasło: <span class="mono">' . h($oneTimePassword) . '</span></div>' : '')
-        . '<form class="form" method="post" action="/edit">'
+        . '<form class="form" method="post" action="' . h(urlPath('/edit')) . '">'
         . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
         . '<input type="hidden" name="id" value="' . h($editId) . '" />'
         . '<label class="label" for="displayName">Nazwa publiczna</label>'
@@ -965,14 +1006,14 @@ if ($editId !== null && $method === 'GET') {
         . '<button class="button buttonPrimary" type="submit" name="action" value="save">Zapisz</button>'
         . '<button class="button buttonSecondary" type="submit" name="action" value="regen">Regeneruj link</button>'
         . '<button class="button buttonGhost" type="submit" name="action" value="genpass">Generuj hasło</button>'
-        . '<a class="button buttonGhost" href="/admin">Wróć</a>'
+        . '<a class="button buttonGhost" href="' . h(urlPath('/admin')) . '">Wróć</a>'
         . '</div>'
         . '</form>'
         . '<div class="fileBox">'
         . '<div class="fileName">Wyślij link mailem</div>'
         . '<div class="muted small">Wysyłka działa przez funkcję <span class="mono">mail()</span> (bez PHPMailer). Na niektórych hostingach wymaga konfiguracji.</div>'
         . '</div>'
-        . '<form class="form" method="post" action="/send-email">'
+        . '<form class="form" method="post" action="' . h(urlPath('/send-email')) . '">'
         . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
         . '<input type="hidden" name="id" value="' . h($editId) . '" />'
         . '<label class="label" for="to">Adres e-mail</label>'
@@ -1013,14 +1054,14 @@ if ($requestPath === '/edit' && $method === 'POST') {
     if ($action === 'regen') {
         $db['files'][$idx]['token'] = bin2hex(random_bytes(16));
         writeFilesDb($db);
-        header('Location: /edit/' . rawurlencode($id), true, 302);
+        header('Location: ' . urlPath('/edit/' . rawurlencode($id)), true, 302);
         exit;
     }
     if ($action === 'remember') {
         $existing = (string) ($_POST['existingSharePassword'] ?? '');
         $hash = (string) ($db['files'][$idx]['sharePasswordHash'] ?? '');
         if ($existing === '' || $hash === '' || !password_verify($existing, $hash)) {
-            header('Location: /edit/' . rawurlencode($id) . '?pw=0', true, 302);
+            header('Location: ' . urlPath('/edit/' . rawurlencode($id)) . '?pw=0', true, 302);
             exit;
         }
         $enc = encryptShareSecret($existing);
@@ -1029,7 +1070,7 @@ if ($requestPath === '/edit' && $method === 'POST') {
         }
         writeFilesDb($db);
         oneTimePasswordStore($id, $existing);
-        header('Location: /edit/' . rawurlencode($id) . '?pw=1', true, 302);
+        header('Location: ' . urlPath('/edit/' . rawurlencode($id)) . '?pw=1', true, 302);
         exit;
     }
     if ($action === 'genpass') {
@@ -1038,7 +1079,7 @@ if ($requestPath === '/edit' && $method === 'POST') {
         $db['files'][$idx]['sharePasswordEnc'] = encryptShareSecret($newPassword);
         writeFilesDb($db);
         oneTimePasswordStore($id, $newPassword);
-        header('Location: /edit/' . rawurlencode($id), true, 302);
+        header('Location: ' . urlPath('/edit/' . rawurlencode($id)), true, 302);
         exit;
     }
     $displayName = trim((string) ($_POST['displayName'] ?? ''));
@@ -1062,7 +1103,7 @@ if ($requestPath === '/edit' && $method === 'POST') {
         oneTimePasswordStore($id, $sharePassword);
     }
     writeFilesDb($db);
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
@@ -1076,7 +1117,7 @@ if ($requestPath === '/send-email' && $method === 'POST') {
     }
     $to = trim((string) ($_POST['to'] ?? ''));
     if ($to === '' || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
-        header('Location: /edit/' . rawurlencode($id) . '?mail=0', true, 302);
+        header('Location: ' . urlPath('/edit/' . rawurlencode($id)) . '?mail=0', true, 302);
         exit;
     }
     $subject = trim((string) ($_POST['subject'] ?? 'Udostępniony plik'));
@@ -1089,12 +1130,12 @@ if ($requestPath === '/send-email' && $method === 'POST') {
     $db = readFilesDb();
     $found = findById($db, $id);
     if ($found === null) {
-        header('Location: /admin', true, 302);
+        header('Location: ' . urlPath('/admin'), true, 302);
         exit;
     }
     $file = $found['file'];
     $token = (string) ($file['token'] ?? $id);
-    $shareUrl = baseUrl() . '/s/' . rawurlencode($token);
+    $shareUrl = baseUrl() . urlPath('/s/' . rawurlencode($token));
     $name = displayNameFor($file);
 
     $final = "Udostępniony plik: {$name}\n";
@@ -1112,7 +1153,7 @@ if ($requestPath === '/send-email' && $method === 'POST') {
     $headers[] = 'Reply-To: hello@commeriongroup.com';
 
     $ok = @mail($to, $subject, $final, implode("\r\n", $headers));
-    header('Location: /edit/' . rawurlencode($id) . '?mail=' . ($ok ? '1' : '0'), true, 302);
+    header('Location: ' . urlPath('/edit/' . rawurlencode($id)) . '?mail=' . ($ok ? '1' : '0'), true, 302);
     exit;
 }
 
@@ -1127,7 +1168,7 @@ if ($requestPath === '/delete' && $method === 'POST') {
     $db = readFilesDb();
     $found = findById($db, $id);
     if ($found === null) {
-        header('Location: /admin', true, 302);
+        header('Location: ' . urlPath('/admin'), true, 302);
         exit;
     }
     $file = $found['file'];
@@ -1138,7 +1179,7 @@ if ($requestPath === '/delete' && $method === 'POST') {
     }
     array_splice($db['files'], (int) $found['index'], 1);
     writeFilesDb($db);
-    header('Location: /admin', true, 302);
+    header('Location: ' . urlPath('/admin'), true, 302);
     exit;
 }
 
@@ -1238,17 +1279,17 @@ if ($shareId !== null && $method === 'POST') {
     $file = $found['file'];
     if (!isShareProtected($file)) {
         setShareUnlocked($shareId);
-        header('Location: /s/' . rawurlencode($shareId), true, 302);
+        header('Location: ' . urlPath('/s/' . rawurlencode($shareId)), true, 302);
         exit;
     }
     $password = (string) ($_POST['password'] ?? '');
     $hash = (string) ($file['sharePasswordHash'] ?? '');
     if ($hash !== '' && $password !== '' && password_verify($password, $hash)) {
         setShareUnlocked($shareId);
-        header('Location: /s/' . rawurlencode($shareId), true, 302);
+        header('Location: ' . urlPath('/s/' . rawurlencode($shareId)), true, 302);
         exit;
     }
-    header('Location: /s/' . rawurlencode($shareId) . '?error=1', true, 302);
+    header('Location: ' . urlPath('/s/' . rawurlencode($shareId)) . '?error=1', true, 302);
     exit;
 }
 
@@ -1266,11 +1307,11 @@ if ($shareId !== null && $method === 'GET') {
         $csrf = csrfToken();
         $name = displayNameFor($file);
         $content = '<div class="page">'
-            . '<header class="header headerPublic"><img class="logo" src="/logo.png" alt="Logo" /></header>'
+            . '<header class="header headerPublic"><img class="logo" src="' . h(urlPath('/logo.png')) . '" alt="Logo" /></header>'
             . '<main class="card cardPublic">'
             . '<h1 class="title">Zabezpieczony link</h1>'
             . '<div class="fileBox"><div class="fileName">' . h($name) . '</div><div class="muted">Wymagane hasło do otwarcia pliku.</div></div>'
-            . '<form class="form" method="post" action="/s/' . h(rawurlencode($shareId)) . '">'
+            . '<form class="form" method="post" action="' . h(urlPath('/s/' . rawurlencode($shareId))) . '">'
             . '<input type="hidden" name="csrf" value="' . h($csrf) . '" />'
             . '<label class="label" for="password">Hasło</label>'
             . '<input class="input" id="password" name="password" type="password" autocomplete="current-password" required />'
@@ -1286,21 +1327,21 @@ if ($shareId !== null && $method === 'GET') {
 
     $originalName = displayNameFor($file);
     $size = (int) ($file['size'] ?? 0);
-    $direct = baseUrl() . '/dl/' . rawurlencode($shareId);
+    $direct = baseUrl() . urlPath('/dl/' . rawurlencode($shareId));
     $absolutePath = __DIR__ . '/uploads/' . (string) ($file['storedName'] ?? '');
     $mime = is_file($absolutePath) ? detectMimeType($absolutePath, (string) ($file['mime'] ?? 'application/octet-stream')) : (string) ($file['mime'] ?? 'application/octet-stream');
 
     $preview = '';
     if (isPreviewSafeMime($mime)) {
-        $src = '/view/' . h(rawurlencode($shareId));
+        $src = urlPath('/view/' . rawurlencode($shareId));
         if (str_starts_with($mime, 'image/')) {
-            $preview = '<div class="preview"><img class="previewImg" src="' . $src . '" alt="' . h($originalName) . '" /></div>';
+            $preview = '<div class="preview"><img class="previewImg" src="' . h($src) . '" alt="' . h($originalName) . '" /></div>';
         } elseif ($mime === 'application/pdf') {
-            $preview = '<div class="preview"><iframe class="previewFrame" src="' . $src . '" title="Podgląd pliku"></iframe></div>';
+            $preview = '<div class="preview"><iframe class="previewFrame" src="' . h($src) . '" title="Podgląd pliku"></iframe></div>';
         } elseif (str_starts_with($mime, 'audio/')) {
-            $preview = '<div class="preview"><audio class="previewAudio" controls src="' . $src . '"></audio></div>';
+            $preview = '<div class="preview"><audio class="previewAudio" controls src="' . h($src) . '"></audio></div>';
         } elseif (str_starts_with($mime, 'video/')) {
-            $preview = '<div class="preview"><video class="previewVideo" controls src="' . $src . '"></video></div>';
+            $preview = '<div class="preview"><video class="previewVideo" controls src="' . h($src) . '"></video></div>';
         }
     } elseif (str_starts_with($mime, 'text/plain') && is_file($absolutePath)) {
         $text = readTextPreview($absolutePath);
@@ -1310,7 +1351,7 @@ if ($shareId !== null && $method === 'GET') {
     }
 
     $content = '<div class="page">'
-        . '<header class="header headerPublic"><img class="logo" src="/logo.png" alt="Logo" /></header>'
+        . '<header class="header headerPublic"><img class="logo" src="' . h(urlPath('/logo.png')) . '" alt="Logo" /></header>'
         . '<main class="card cardPublic">'
         . '<h1 class="title">Udostępniony plik</h1>'
         . '<div class="fileBox">'
@@ -1319,8 +1360,8 @@ if ($shareId !== null && $method === 'GET') {
         . '</div>'
         . $preview
         . '<div class="row">'
-        . '<a class="button buttonPrimary" href="/dl/' . h(rawurlencode($shareId)) . '">Pobierz</a>'
-        . '<a class="button buttonSecondary" href="/view/' . h(rawurlencode($shareId)) . '" target="_blank" rel="noreferrer">Otwórz</a>'
+        . '<a class="button buttonPrimary" href="' . h(urlPath('/dl/' . rawurlencode($shareId))) . '">Pobierz</a>'
+        . '<a class="button buttonSecondary" href="' . h(urlPath('/view/' . rawurlencode($shareId))) . '" target="_blank" rel="noreferrer">Otwórz</a>'
         . '<a class="button buttonGhost" href="' . h($direct) . '">Link bezpośredni</a>'
         . '</div>'
         . '<div class="footerNote muted">Link firmowy — bez rejestracji, bez reklam.</div>'
