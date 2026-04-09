@@ -1,0 +1,13 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Serwuj istniejące pliki i katalogi bezpośrednio
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Wszystko inne przekaż do index.php (front controller)
+    RewriteRule ^ index.php [L]
+</IfModule>

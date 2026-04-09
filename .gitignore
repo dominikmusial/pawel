@@ -1,0 +1,7 @@
+.DS_Store
+Thumbs.db
+
+/uploads/*
+!/uploads/.htaccess
+
+/data/files.json
