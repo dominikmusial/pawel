@@ -76,10 +76,7 @@ function panelPassword(): string
     if ($pw !== '') {
         return $pw;
     }
-    if (PHP_SAPI === 'cli-server') {
-        return 'admin123';
-    }
-    return '';
+    return 'admin123';
 }
 
 function sharePasswordKey(): string
@@ -579,7 +576,6 @@ if ($requestPath === '/login' && $method === 'GET') {
         . '<label class="label" for="password">Hasło</label>'
         . '<input class="input" id="password" name="password" type="password" autocomplete="current-password" autofocus required />'
         . ($error === '1' ? '<div class="alert">Nieprawidłowe hasło.</div>' : '')
-        . ($error === 'config' ? '<div class="alert">Panel nie jest skonfigurowany. Ustaw zmienną środowiskową PANEL_PASSWORD.</div>' : '')
         . '<button class="button buttonPrimary" type="submit">Zaloguj</button>'
         . '</form>'
         . '</div></main>';
@@ -591,10 +587,6 @@ if ($requestPath === '/login' && $method === 'GET') {
 if ($requestPath === '/login' && $method === 'POST') {
     $password = (string) ($_POST['password'] ?? '');
     $expected = panelPassword();
-    if ($expected === '') {
-        header('Location: ' . urlPath('/login') . '?error=config', true, 302);
-        exit;
-    }
     if (!hash_equals($expected, $password)) {
         header('Location: ' . urlPath('/login') . '?error=1', true, 302);
         exit;
